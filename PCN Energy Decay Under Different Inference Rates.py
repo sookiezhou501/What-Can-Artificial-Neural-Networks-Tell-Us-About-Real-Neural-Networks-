@@ -14,12 +14,12 @@ np.random.seed(42)
 
 
 plt.rcParams.update({
-    'font.size': 22,
+    'font.size': 28,
     'axes.titlesize': 26,
-    'axes.labelsize': 24,
-    'xtick.labelsize': 20,
-    'ytick.labelsize': 20,
-    'legend.fontsize': 22,
+    'axes.labelsize': 28,
+    'xtick.labelsize': 28,
+    'ytick.labelsize': 28,
+    'legend.fontsize': 28,
     'figure.titlesize': 28
 })
 
@@ -35,7 +35,6 @@ class PredictiveCodingNetwork:
         self.layer_dims = layer_dims
         self.n_layers = len(layer_dims)
         
-        # 选择激活函数及其导数
         if activation == 'tanh':
             self.activation = np.tanh
             self.activation_derivative = lambda x: 1 - np.tanh(x)**2
@@ -124,7 +123,7 @@ class PredictiveCodingNetwork:
         return new_activities
     
     def inference_to_convergence(self, input_data: np.ndarray, target_data: Optional[np.ndarray] = None,
-                                  inference_rate: float = 0.1, max_iters: int = 100,
+                                  inference_rate: float = 0.1, max_iters: int = 200,
                                   tol: float = 1e-6, track_history: bool = True) -> Tuple[List[np.ndarray], Dict]:
 
         activities = [input_data.copy()]
@@ -245,15 +244,9 @@ def test_inference_convergence(model: PredictiveCodingNetwork,
         
         fresh_model.inference_history = {'energies': []}
         activities, info = fresh_model.inference_to_convergence(
-            X_sample, y_sample, inference_rate=gamma, max_iters=100, tol=1e-4, track_history=True
+            X_sample, y_sample, inference_rate=gamma, max_iters=200, tol=1e-4, track_history=True
         )
         energies = fresh_model.inference_history['energies']
-        
-
-        print(f"  Length of energies: {len(energies)}")
-        print(f"  First 5 energies: {energies[:5]}")
-        print(f"  Last 5 energies: {energies[-5:]}")
-        print(f"  Final energy from info: {info['final_energy']:.6f}")
         
         results['convergence_trajectories'].append(energies)
         results['iterations_to_converge'].append(info['n_iterations'])
@@ -274,59 +267,51 @@ def print_quantitative_results(results: Dict):
     print("QUANTITATIVE RESULTS SUMMARY")
     print("=" * 80)
     
-    print("\n{:<12} {:<15} {:<15} {:<15} {:<20}".format(
-        "γ", "Initial Energy", "Final Energy", "Steps", "Reduction (%)"))
-    print("-" * 80)
+    print("\n{:<12} {:<12} {:<20} {:<15} {:<20}".format(
+        "γ", "Converged?", "Steps", "Final Energy", "Reduction (%)"))
+    print("-" * 85)
     
     for i, gamma in enumerate(results['inference_rates']):
-        initial = results['initial_energies'][i]
-        final = results['final_energies'][i]
+        converged = results['converged'][i]
         steps = results['iterations_to_converge'][i]
-        reduction = (initial - final) / initial * 100
+        final_energy = results['final_energies'][i]
+        initial = results['initial_energies'][i]
+        reduction = (initial - final_energy) / initial * 100 if initial > 0 else 0
         
-        print("{:<12} {:<15.6f} {:<15.6f} {:<15} {:<20.2f}".format(
-            gamma, initial, final, steps, reduction))
+        status = "✓ Yes" if converged else "✗ No (timeout)"
+        print("{:<12} {:<12} {:<20} {:<15.6f} {:<20.2f}".format(
+            gamma, status, steps, final_energy, reduction))
     
-    print("-" * 80)
-    
+    print("-" * 85)
 
-    print("\nAdditional Statistics:")
-    fastest_idx = np.argmin(results['iterations_to_converge'])
-    slowest_idx = np.argmax(results['iterations_to_converge'])
-    best_energy_idx = np.argmin(results['final_energies'])
-    largest_reduction_idx = np.argmax([(results['initial_energies'][i] - results['final_energies'][i])/results['initial_energies'][i]*100 for i in range(len(results['inference_rates']))])
-    
-    print(f"  Fastest convergence: γ = {results['inference_rates'][fastest_idx]} ({results['iterations_to_converge'][fastest_idx]} steps)")
-    print(f"  Slowest convergence: γ = {results['inference_rates'][slowest_idx]} ({results['iterations_to_converge'][slowest_idx]} steps)")
-    print(f"  Best final energy: γ = {results['inference_rates'][best_energy_idx]} ({results['final_energies'][best_energy_idx]:.6f})")
-    print(f"  Largest energy reduction: γ = {results['inference_rates'][largest_reduction_idx]}")
 
-def plot_energy_decay(results: Dict, max_steps: int = 30, save_path: str = 'pcn_energy_decay.png'):
+def plot_energy_decay(results: Dict, max_steps: int = 200, save_path: str = 'pcn_energy_decay.png'):
 
-    fig, ax = plt.subplots(figsize=(14, 10))
+    fig, ax = plt.subplots(figsize=(18, 8))  # 长方形布局：宽18，高8
     
     colors = ['#2ecc71', '#3498db', '#e74c3c', '#f39c12']
     linestyles = ['-', '--', '-.', ':']
     markers = ['o', 's', '^', 'D']
-    linewidth = 3
-    markersize = 10
+    linewidth = 2.5
+    markersize = 6
     
     for i, gamma in enumerate(results['inference_rates']):
         trajectory = results['convergence_trajectories'][i]
         n_steps = results['iterations_to_converge'][i]
+        converged = results['converged'][i]
         
         if trajectory:
             steps_to_show = min(max_steps, len(trajectory))
             x_axis = np.arange(steps_to_show)
             
-
-            label = f'γ = {gamma} ({n_steps} steps)'
-            if gamma == 0.5 and n_steps >= 100:
-                label = f'γ = {gamma} ({n_steps} steps, not converged)'
+            if converged:
+                label = f'γ = {gamma} (converged at step {n_steps})'
+            else:
+                label = f'γ = {gamma} (not converged)'
             
             ax.plot(x_axis, trajectory[:steps_to_show], 
                    marker=markers[i], 
-                   markevery=max(1, steps_to_show // 10),
+                   markevery=max(1, steps_to_show // 20),
                    color=colors[i],
                    linestyle=linestyles[i],
                    label=label, 
@@ -335,15 +320,12 @@ def plot_energy_decay(results: Dict, max_steps: int = 30, save_path: str = 'pcn_
     
     ax.set_xlim([0, max_steps])
     ax.set_ylim([0.25, 0.70])
-    
-    ax.set_xlabel('Inference Step', fontsize=26, fontweight='bold')
-    ax.set_ylabel('Energy E', fontsize=26, fontweight='bold')
-    ax.set_title(f'PCN Energy Decay Under Different Inference Rates',
-                 fontsize=28, fontweight='bold', pad=15)
-    ax.legend(loc='upper right', fontsize=18, framealpha=0.9)
-    ax.grid(True, alpha=0.3, linestyle='--', linewidth=1.5)
-    
-    ax.tick_params(axis='both', labelsize=22)
+    ax.set_xlabel('Inference Step', fontsize=28, fontweight='bold')
+    ax.set_ylabel('Energy E', fontsize=28, fontweight='bold')
+
+    ax.legend(loc='upper right', fontsize=24, framealpha=0.9)
+    ax.grid(True, alpha=0.3, linestyle='--', linewidth=1)
+    ax.tick_params(axis='both', labelsize=28)
     
     plt.tight_layout()
     
@@ -353,6 +335,7 @@ def plot_energy_decay(results: Dict, max_steps: int = 30, save_path: str = 'pcn_
     
     plt.show()
     return fig
+
 
 def main():
 
@@ -389,8 +372,8 @@ def main():
     print_quantitative_results(results)
     
 
-    print("\n5. Generating energy decay figure (first 30 steps)...")
-    fig = plot_energy_decay(results, max_steps=25, save_path='pcn_energy_decay.png')
+    print("\n5. Generating energy decay figure (200 steps)...")
+    fig = plot_energy_decay(results, max_steps=200, save_path='pcn_energy_decay.png')
     
 
     print("\n" + "=" * 60)
